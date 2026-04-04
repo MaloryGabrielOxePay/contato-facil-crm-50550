@@ -1,0 +1,52 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GPD — Gestor Político Digital</title>
+    <!-- GitHub Pages SPA redirect restaura o path -->
+    <script>
+      (function(l) {
+        if (l.search[1] === '/' ) {
+          var decoded = l.search.slice(1).split('&').map(function(s) {
+            return s.replace(/~and~/g, '&')
+          }).join('?');
+          window.history.replaceState(null, null,
+            l.pathname.slice(0, -1) + decoded + l.hash
+          );
+        }
+      }(window.location))
+    </script>
+    <meta name="description" content="Plataforma web para gestão de campanhas eleitorais e mandatos políticos no Brasil" />
+    <meta name="author" content="GPD - Gestor Político Digital" />
+    <meta name="theme-color" content="#1d4ed8" />
+
+    <!-- PWA -->
+    <link rel="manifest" href="/contato-facil-crm-50550/manifest.json" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Open Graph -->
+    <meta property="og:title" content="GPD — Gestor Político Digital" />
+    <meta property="og:description" content="Gerencie eleitores, demandas, financeiro e equipe da sua campanha em um só lugar." />
+    <meta property="og:type" content="website" />
+    <script type="module" crossorigin src="/contato-facil-crm-50550/assets/index-B6kMVEsj.js"></script>
+    <link rel="stylesheet" crossorigin href="/contato-facil-crm-50550/assets/index-tsUnoieX.css">
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch(() => {});
+        });
+      }
+    </script>
+  </body>
+</html>
