@@ -1,239 +1,341 @@
-
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { 
-  Users, 
-  Briefcase, 
-  DollarSign, 
-  TrendingUp,
-  Calendar,
-  Phone,
-  Mail,
-  Plus,
-  ArrowUp,
-  ArrowDown,
-  Clock
+import { Progress } from "@/components/ui/progress";
+import {
+  Users, UserCheck, ClipboardList, DollarSign,
+  CalendarDays, TrendingUp, AlertTriangle, Star,
+  ArrowUp, ArrowDown, Plus,
 } from "lucide-react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, PieChart, Pie, Cell, Legend,
+} from "recharts";
+import { supabase } from "@/integrations/supabase/client";
+import { useCampaign } from "@/contexts/CampaignContext";
+import { formatCurrency, formatDate, formatNumber } from "@/lib/formatters";
+import { VOTER_STATUS, EVENT_STATUS } from "@/lib/constants";
+import { useNavigate } from "react-router-dom";
+import { cn } from "@/lib/utils";
 
-// Mock data
-const salesData = [
-  { name: 'Jan', value: 12000 },
-  { name: 'Fev', value: 19000 },
-  { name: 'Mar', value: 15000 },
-  { name: 'Abr', value: 25000 },
-  { name: 'Mai', value: 22000 },
-  { name: 'Jun', value: 30000 },
-];
+const VOTER_COLORS: Record<string, string> = {
+  confirmado: "#16a34a", provavel: "#2563eb",
+  indeciso: "#d97706", oposicao: "#dc2626", neutro: "#94a3b8",
+};
 
-const pipelineData = [
-  { stage: 'Lead', count: 45 },
-  { stage: 'Qualificado', count: 32 },
-  { stage: 'Proposta', count: 18 },
-  { stage: 'Negociação', count: 12 },
-  { stage: 'Fechado', count: 8 },
-];
-
-const recentActivities = [
-  { type: 'call', contact: 'Maria Santos', time: '10:30', description: 'Ligação sobre proposta' },
-  { type: 'meeting', contact: 'João Silva', time: '14:00', description: 'Reunião de negociação' },
-  { type: 'email', contact: 'Ana Costa', time: '16:45', description: 'Envio de contrato' },
-  { type: 'task', contact: 'Pedro Lima', time: '09:15', description: 'Follow-up agendado' },
-];
-
-const upcomingTasks = [
-  { id: 1, title: 'Ligar para Maria Santos', time: '10:00', priority: 'high' },
-  { id: 2, title: 'Enviar proposta para TechCorp', time: '14:30', priority: 'medium' },
-  { id: 3, title: 'Reunião com equipe de vendas', time: '16:00', priority: 'low' },
-  { id: 4, title: 'Follow-up com cliente ABC', time: '17:30', priority: 'high' },
-];
+function KPICard({
+  title, value, subtitle, icon: Icon, color = "blue", onClick,
+}: {
+  title: string; value: string | number; subtitle?: string;
+  icon: React.ElementType; color?: string; onClick?: () => void;
+}) {
+  const colors: Record<string, string> = {
+    blue: "bg-blue-50 text-blue-600", green: "bg-green-50 text-green-600",
+    yellow: "bg-yellow-50 text-yellow-600", red: "bg-red-50 text-red-600",
+    purple: "bg-purple-50 text-purple-600", indigo: "bg-indigo-50 text-indigo-600",
+  };
+  return (
+    <Card
+      className={cn("transition-shadow", onClick && "cursor-pointer hover:shadow-md hover:border-blue-200")}
+      onClick={onClick}
+    >
+      <CardContent className="p-5">
+        <div className="flex items-start justify-between">
+          <div className="flex-1">
+            <p className="text-sm text-slate-500 font-medium">{title}</p>
+            <p className="text-2xl font-bold text-slate-900 mt-1">
+              {typeof value === "number" ? formatNumber(value) : value}
+            </p>
+            {subtitle && <p className="text-xs text-slate-400 mt-0.5">{subtitle}</p>}
+          </div>
+          <div className={cn("p-2.5 rounded-xl", colors[color])}>
+            <Icon size={20} />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function Dashboard() {
-  const currentDate = new Date().toLocaleDateString('pt-BR', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
+  const { campaign } = useCampaign();
+  const navigate = useNavigate();
+
+  const [stats, setStats] = useState({
+    totalVoters: 0, confirmed: 0, totalLeaders: 0, openDemands: 0,
+    urgentDemands: 0, totalExpenses: 0, totalDonations: 0,
+    upcomingEvents: [] as { id: string; title: string; start_datetime: string; status: string }[],
+    urgentDemandsList: [] as { id: string; requester_name: string; type: string; created_at: string }[],
+    topLeaders: [] as { id: string; full_name: string; score: number; vote_goal: number; voterCount: number }[],
+    votersByStatus: [] as { name: string; value: number; color: string }[],
+    votersTrend: [] as { date: string; total: number }[],
   });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!campaign?.id) { setLoading(false); return; }
+    fetchStats();
+  }, [campaign?.id]);
+
+  async function fetchStats() {
+    setLoading(true);
+    const cid = campaign!.id;
+
+    const [
+      { count: totalVoters },
+      votersRes,
+      { count: totalLeaders },
+      demandsRes,
+      expensesRes,
+      donationsRes,
+      eventsRes,
+      leadersRes,
+    ] = await Promise.all([
+      supabase.from("voters").select("*", { count: "exact", head: true }).eq("campaign_id", cid),
+      supabase.from("voters").select("status, created_at").eq("campaign_id", cid),
+      supabase.from("leaders").select("*", { count: "exact", head: true }).eq("campaign_id", cid).eq("active", true),
+      supabase.from("demands").select("id, requester_name, type, priority, status, created_at").eq("campaign_id", cid),
+      supabase.from("expenses").select("amount").eq("campaign_id", cid),
+      supabase.from("donations").select("amount").eq("campaign_id", cid),
+      supabase.from("events").select("id, title, start_datetime, status")
+        .eq("campaign_id", cid).gte("start_datetime", new Date().toISOString())
+        .order("start_datetime").limit(5),
+      supabase.from("leaders").select("id, full_name, score, vote_goal")
+        .eq("campaign_id", cid).eq("active", true).order("score", { ascending: false }).limit(5),
+    ]);
+
+    const voters = votersRes.data || [];
+    const demands = demandsRes.data || [];
+
+    const byStatus: Record<string, number> = {};
+    voters.forEach(v => { byStatus[v.status] = (byStatus[v.status] || 0) + 1; });
+
+    const votersByStatus = Object.entries(VOTER_STATUS)
+      .map(([k, v]) => ({ name: v.label, value: byStatus[k] || 0, color: VOTER_COLORS[k] }))
+      .filter(x => x.value > 0);
+
+    const now = new Date();
+    const trendMap: Record<string, number> = {};
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(now); d.setDate(d.getDate() - i);
+      trendMap[d.toISOString().slice(0, 10)] = 0;
+    }
+    let running = 0;
+    [...voters].sort((a, b) => a.created_at > b.created_at ? 1 : -1).forEach(v => {
+      running++;
+      const day = (v.created_at || "").slice(0, 10);
+      if (day in trendMap) trendMap[day] = running;
+    });
+    let last = 0;
+    const votersTrend = Object.entries(trendMap).map(([date, val]) => {
+      if (val > 0) last = val; else val = last;
+      return { date: date.slice(5), total: val };
+    });
+
+    const totalExpenses = (expensesRes.data || []).reduce((s, e) => s + (e.amount || 0), 0);
+    const totalDonations = (donationsRes.data || []).reduce((s, d) => s + (d.amount || 0), 0);
+    const openDemands = demands.filter(d => d.status === "aberta" || d.status === "em_andamento").length;
+    const urgentDemandsList = demands.filter(d => d.priority === "alta" && (d.status === "aberta" || d.status === "em_andamento")).slice(0, 5);
+
+    const leaderIds = (leadersRes.data || []).map(l => l.id);
+    const voterCounts: Record<string, number> = {};
+    if (leaderIds.length) {
+      const { data: lv } = await supabase.from("voters").select("leader_id").eq("campaign_id", cid).in("leader_id", leaderIds);
+      (lv || []).forEach(v => { if (v.leader_id) voterCounts[v.leader_id] = (voterCounts[v.leader_id] || 0) + 1; });
+    }
+    const topLeaders = (leadersRes.data || []).map(l => ({ ...l, voterCount: voterCounts[l.id] || 0 }));
+
+    setStats({
+      totalVoters: totalVoters || 0, confirmed: byStatus["confirmado"] || 0,
+      totalLeaders: totalLeaders || 0, openDemands,
+      urgentDemands: urgentDemandsList.length, totalExpenses, totalDonations,
+      upcomingEvents: eventsRes.data || [], urgentDemandsList, topLeaders,
+      votersByStatus, votersTrend,
+    });
+    setLoading(false);
+  }
+
+  const voteGoal = campaign?.vote_goal || 0;
+  const confirmedPct = voteGoal ? Math.min(100, Math.round((stats.confirmed / voteGoal) * 100)) : 0;
+
+  if (!campaign) {
+    return (
+      <div className="p-8 flex flex-col items-center justify-center min-h-96 text-center">
+        <div className="text-5xl mb-4">🗳️</div>
+        <h2 className="text-xl font-semibold text-slate-700">Nenhuma campanha selecionada</h2>
+        <p className="text-slate-500 mt-2 mb-6">Crie ou selecione uma campanha para ver o dashboard.</p>
+        <Button onClick={() => navigate("/onboarding")}>Criar Campanha</Button>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="p-6 space-y-6">
+      <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Bom dia, João! 👋</h1>
-          <p className="text-muted-foreground mt-2">{currentDate}</p>
+          <h1 className="text-2xl font-bold text-slate-900">{campaign.name}</h1>
+          <p className="text-slate-500 text-sm mt-0.5">{campaign.city} · {campaign.state} · {campaign.year}</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" className="gap-2">
-            <Calendar size={16} />
-            Ver Agenda
+          <Button size="sm" variant="outline" onClick={() => navigate("/eleitores")}>
+            <Plus size={14} className="mr-1" /> Novo Eleitor
           </Button>
-          <Button className="gap-2">
-            <Plus size={16} />
-            Novo Negócio
+          <Button size="sm" onClick={() => navigate("/demandas")}>
+            <Plus size={14} className="mr-1" /> Nova Demanda
           </Button>
         </div>
       </div>
 
-      {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card className="hover-lift">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total de Contatos</CardTitle>
-            <Users className="h-4 w-4 text-primary" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">1,284</div>
-            <div className="flex items-center text-xs text-success mt-1">
-              <ArrowUp size={12} className="mr-1" />
-              +12% este mês
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="hover-lift">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Negócios Ativos</CardTitle>
-            <Briefcase className="h-4 w-4 text-primary" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">67</div>
-            <div className="flex items-center text-xs text-success mt-1">
-              <ArrowUp size={12} className="mr-1" />
-              +8% este mês
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="hover-lift">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Receita Mensal</CardTitle>
-            <DollarSign className="h-4 w-4 text-primary" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">R$ 45.200</div>
-            <div className="flex items-center text-xs text-destructive mt-1">
-              <ArrowDown size={12} className="mr-1" />
-              -3% este mês
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="hover-lift">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Taxa de Conversão</CardTitle>
-            <TrendingUp className="h-4 w-4 text-primary" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">24%</div>
-            <div className="flex items-center text-xs text-success mt-1">
-              <ArrowUp size={12} className="mr-1" />
-              +5% este mês
-            </div>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
+        <KPICard title="Total de Eleitores" value={stats.totalVoters} icon={Users}
+          subtitle={voteGoal ? `Meta: ${formatNumber(voteGoal)}` : undefined}
+          color="blue" onClick={() => navigate("/eleitores")} />
+        <KPICard title="Confirmados" value={stats.confirmed} icon={UserCheck}
+          subtitle={`${confirmedPct}% da meta`} color="green" onClick={() => navigate("/eleitores")} />
+        <KPICard title="Lideranças" value={stats.totalLeaders} icon={Star}
+          color="purple" onClick={() => navigate("/liderancas")} />
+        <KPICard title="Demandas Abertas" value={stats.openDemands} icon={ClipboardList}
+          subtitle={stats.urgentDemands > 0 ? `${stats.urgentDemands} urgentes` : undefined}
+          color={stats.urgentDemands > 0 ? "red" : "yellow"} onClick={() => navigate("/demandas")} />
+        <KPICard title="Saldo Financeiro" value={formatCurrency(stats.totalDonations - stats.totalExpenses)}
+          icon={DollarSign} subtitle={`Gastos: ${formatCurrency(stats.totalExpenses)}`}
+          color="indigo" onClick={() => navigate("/financeiro")} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Sales Trend Chart */}
-        <Card className="hover-lift">
-          <CardHeader>
-            <CardTitle>Tendência de Vendas</CardTitle>
+      {voteGoal > 0 && (
+        <Card>
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                <TrendingUp size={16} className="text-blue-600" /> Meta de Votos
+              </div>
+              <span className="text-sm font-bold text-blue-600">{confirmedPct}% atingido</span>
+            </div>
+            <Progress value={confirmedPct} className="h-3" />
+            <div className="flex justify-between mt-1.5 text-xs text-slate-500">
+              <span>{formatNumber(stats.confirmed)} confirmados</span>
+              <span>Meta: {formatNumber(voteGoal)}</span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold text-slate-700">Eleitores por Status</CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={salesData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
-                <Tooltip formatter={(value) => [`R$ ${value.toLocaleString()}`, 'Vendas']} />
-                <Line 
-                  type="monotone" 
-                  dataKey="value" 
-                  stroke="hsl(var(--primary))" 
-                  strokeWidth={3}
-                  dot={{ fill: 'hsl(var(--primary))' }}
-                />
+            {stats.votersByStatus.length > 0 ? (
+              <ResponsiveContainer width="100%" height={200}>
+                <PieChart>
+                  <Pie data={stats.votersByStatus} cx="50%" cy="50%" innerRadius={50} outerRadius={80} dataKey="value">
+                    {stats.votersByStatus.map((e, i) => <Cell key={i} fill={e.color} />)}
+                  </Pie>
+                  <Tooltip formatter={(v: number) => formatNumber(v)} />
+                  <Legend iconType="circle" iconSize={8} />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-48 flex items-center justify-center text-slate-400 text-sm">Nenhum eleitor cadastrado</div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="lg:col-span-2">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold text-slate-700">Evolução de Eleitores (30 dias)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart data={stats.votersTrend}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis dataKey="date" tick={{ fontSize: 10 }} tickLine={false} />
+                <YAxis tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+                <Tooltip formatter={(v: number) => formatNumber(v)} />
+                <Line type="monotone" dataKey="total" stroke="#2563eb" strokeWidth={2} dot={false} name="Eleitores" />
               </LineChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
-
-        {/* Pipeline Chart */}
-        <Card className="hover-lift">
-          <CardHeader>
-            <CardTitle>Pipeline de Vendas</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={pipelineData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="stage" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="count" fill="hsl(var(--primary))" />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Recent Activities */}
-        <Card className="hover-lift">
-          <CardHeader>
-            <CardTitle>Atividades Recentes</CardTitle>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <Card>
+          <CardHeader className="pb-2 flex flex-row items-center justify-between">
+            <CardTitle className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+              <CalendarDays size={14} className="text-blue-600" /> Próximos Eventos
+            </CardTitle>
+            <Button variant="ghost" size="sm" className="text-xs text-blue-600 h-6 px-2" onClick={() => navigate("/agenda")}>Ver todos</Button>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {recentActivities.map((activity, index) => (
-                <div key={index} className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                    {activity.type === 'call' && <Phone size={14} className="text-primary" />}
-                    {activity.type === 'meeting' && <Calendar size={14} className="text-primary" />}
-                    {activity.type === 'email' && <Mail size={14} className="text-primary" />}
-                    {activity.type === 'task' && <Clock size={14} className="text-primary" />}
+          <CardContent className="space-y-2">
+            {stats.upcomingEvents.length === 0
+              ? <p className="text-xs text-slate-400 text-center py-4">Nenhum evento próximo</p>
+              : stats.upcomingEvents.map(ev => (
+                <div key={ev.id} className="flex items-center gap-2 p-2 rounded-lg bg-slate-50">
+                  <CalendarDays size={13} className="text-blue-500 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-slate-800 truncate">{ev.title}</p>
+                    <p className="text-[10px] text-slate-500">{formatDate(ev.start_datetime)}</p>
                   </div>
-                  <div className="flex-1">
-                    <p className="font-medium text-sm">{activity.description}</p>
-                    <p className="text-xs text-muted-foreground">{activity.contact}</p>
-                  </div>
-                  <div className="text-xs text-muted-foreground">{activity.time}</div>
+                  <Badge variant="outline" className={cn("text-[10px] shrink-0 px-1.5",
+                    EVENT_STATUS[ev.status as keyof typeof EVENT_STATUS]?.color)}>
+                    {EVENT_STATUS[ev.status as keyof typeof EVENT_STATUS]?.label || ev.status}
+                  </Badge>
                 </div>
-              ))}
-            </div>
+              ))
+            }
           </CardContent>
         </Card>
 
-        {/* Upcoming Tasks */}
-        <Card className="hover-lift">
-          <CardHeader>
-            <CardTitle>Próximas Tarefas</CardTitle>
+        <Card>
+          <CardHeader className="pb-2 flex flex-row items-center justify-between">
+            <CardTitle className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+              <AlertTriangle size={14} className="text-red-500" /> Demandas Urgentes
+            </CardTitle>
+            <Button variant="ghost" size="sm" className="text-xs text-blue-600 h-6 px-2" onClick={() => navigate("/demandas")}>Ver todas</Button>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {upcomingTasks.map((task) => (
-                <div key={task.id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-                  <div className={`w-3 h-3 rounded-full ${
-                    task.priority === 'high' ? 'bg-red-500' : 
-                    task.priority === 'medium' ? 'bg-yellow-500' : 'bg-green-500'
-                  }`} />
-                  <div className="flex-1">
-                    <p className="font-medium text-sm">{task.title}</p>
-                    <p className="text-xs text-muted-foreground">{task.time}</p>
+          <CardContent className="space-y-2">
+            {stats.urgentDemandsList.length === 0
+              ? <p className="text-xs text-slate-400 text-center py-4">Sem demandas urgentes</p>
+              : stats.urgentDemandsList.map(d => (
+                <div key={d.id} className="flex items-start gap-2 p-2 rounded-lg bg-red-50">
+                  <AlertTriangle size={13} className="text-red-500 mt-0.5 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-slate-800 truncate">{d.requester_name}</p>
+                    <p className="text-[10px] text-slate-500 capitalize">{d.type} · {formatDate(d.created_at)}</p>
                   </div>
-                  <Badge variant={
-                    task.priority === 'high' ? 'destructive' : 
-                    task.priority === 'medium' ? 'secondary' : 'default'
-                  }>
-                    {task.priority === 'high' ? 'Alta' : 
-                     task.priority === 'medium' ? 'Média' : 'Baixa'}
-                  </Badge>
                 </div>
-              ))}
-            </div>
+              ))
+            }
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2 flex flex-row items-center justify-between">
+            <CardTitle className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+              <Star size={14} className="text-yellow-500" /> Top Lideranças
+            </CardTitle>
+            <Button variant="ghost" size="sm" className="text-xs text-blue-600 h-6 px-2" onClick={() => navigate("/liderancas")}>Ver todas</Button>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {stats.topLeaders.length === 0
+              ? <p className="text-xs text-slate-400 text-center py-4">Nenhuma liderança cadastrada</p>
+              : stats.topLeaders.map((l, i) => (
+                <div key={l.id} className="flex items-center gap-3 p-2 rounded-lg bg-slate-50">
+                  <div className={cn("w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0",
+                    i === 0 ? "bg-yellow-400 text-yellow-900" : i === 1 ? "bg-slate-300 text-slate-700" : i === 2 ? "bg-orange-300 text-orange-900" : "bg-slate-100 text-slate-600")}>
+                    {i + 1}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-slate-800 truncate">{l.full_name}</p>
+                    <p className="text-[10px] text-slate-500">{l.voterCount} eleitores</p>
+                  </div>
+                  <span className="text-xs font-bold text-blue-600">{l.score}pts</span>
+                </div>
+              ))
+            }
           </CardContent>
         </Card>
       </div>
