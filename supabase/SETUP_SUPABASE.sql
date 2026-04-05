@@ -163,40 +163,30 @@ CREATE TRIGGER user_roles_updated_at
 
 ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Usuários veem seus próprios roles"
+-- SELECT: apenas o próprio user vê seus roles (sem referência a organizations — evita recursão infinita)
+CREATE POLICY "user_roles_select"
   ON public.user_roles FOR SELECT
-  USING (
-    user_id = auth.uid() OR
-    organization_id IN (
-      SELECT id FROM public.organizations WHERE owner_id = auth.uid()
-    ) OR
-    organization_id IN (
-      SELECT organization_id FROM public.user_roles ur2
-      WHERE ur2.user_id = auth.uid() AND ur2.role IN ('super_admin', 'admin')
-    )
-  );
+  USING (user_id = auth.uid());
 
-CREATE POLICY "Admin gerencia roles"
+-- INSERT: usuário adiciona a si mesmo OU owner da org adiciona qualquer membro
+CREATE POLICY "user_roles_insert"
   ON public.user_roles FOR INSERT
   WITH CHECK (
+    user_id = auth.uid()
+    OR
     organization_id IN (
       SELECT id FROM public.organizations WHERE owner_id = auth.uid()
-    ) OR
-    organization_id IN (
-      SELECT organization_id FROM public.user_roles ur2
-      WHERE ur2.user_id = auth.uid() AND ur2.role IN ('super_admin', 'admin')
     )
   );
 
-CREATE POLICY "Admin atualiza roles"
+-- UPDATE: usuário atualiza seu próprio role OU owner da org atualiza qualquer membro
+CREATE POLICY "user_roles_update"
   ON public.user_roles FOR UPDATE
   USING (
+    user_id = auth.uid()
+    OR
     organization_id IN (
       SELECT id FROM public.organizations WHERE owner_id = auth.uid()
-    ) OR
-    organization_id IN (
-      SELECT organization_id FROM public.user_roles ur2
-      WHERE ur2.user_id = auth.uid() AND ur2.role IN ('super_admin', 'admin')
     )
   );
 
