@@ -9,6 +9,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { OrganizationProvider } from "@/contexts/OrganizationContext";
 import { CampaignProvider } from "@/contexts/CampaignContext";
 import { MainLayout } from "@/components/layout/MainLayout";
+import { PrivateRoute } from "@/components/PrivateRoute";
 
 // Páginas públicas
 import Login from "./pages/Login";
@@ -61,6 +62,7 @@ const App = () => (
                 <Route
                   path="/*"
                   element={
+                    <PrivateRoute>
                     <MainLayout>
                       <Suspense fallback={<PageLoader />}>
                         <Routes>
@@ -83,6 +85,7 @@ const App = () => (
                         </Routes>
                       </Suspense>
                     </MainLayout>
+                    </PrivateRoute>
                   }
                 />
               </Routes>

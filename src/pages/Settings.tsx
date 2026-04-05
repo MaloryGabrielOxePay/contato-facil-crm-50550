@@ -8,7 +8,8 @@ import { CAMPAIGN_MODE, CAMPAIGN_OFFICE } from "@/lib/constants";
 import { formatDate } from "@/lib/formatters";
 import { User, Building2, Vote, LogOut } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { getInitials, getAvatarColor } from "@/lib/utils";
+import { getInitials } from "@/lib/formatters";
+import { getAvatarColor } from "@/lib/utils";
 
 export default function Settings() {
   const { user, profile, signOut } = useAuth();
