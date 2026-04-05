@@ -1,15 +1,20 @@
-
-import { useState } from "react";
-import { 
-  LayoutDashboard, 
-  Users, 
-  Briefcase, 
-  CheckSquare, 
-  Calendar,
-  BarChart3,
-  Settings,
+import {
+  LayoutDashboard,
+  Users,
+  UserCheck,
+  ClipboardList,
+  DollarSign,
+  CalendarDays,
+  Package,
+  Map,
+  Megaphone,
+  BarChart2,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  FileText,
+  Swords,
+  Settings,
+  Vote,
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
@@ -25,79 +30,132 @@ import {
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 
-const navigationItems = [
-  { title: "Dashboard", url: "/", icon: LayoutDashboard },
-  { title: "Contatos", url: "/contatos", icon: Users },
-  { title: "Negócios", url: "/negocios", icon: Briefcase },
-  { title: "Tarefas", url: "/tarefas", icon: CheckSquare },
-  { title: "Calendário", url: "/calendario", icon: Calendar },
-  { title: "Relatórios", url: "/relatorios", icon: BarChart3 },
+const navMain = [
+  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
+  { title: "Eleitores (CRM)", url: "/eleitores", icon: Users },
+  { title: "Lideranças", url: "/liderancas", icon: UserCheck },
+  { title: "Demandas", url: "/demandas", icon: ClipboardList },
+  { title: "Financeiro", url: "/financeiro", icon: DollarSign },
+  { title: "Agenda", url: "/agenda", icon: CalendarDays },
+  { title: "Materiais", url: "/materiais", icon: Package },
+];
+
+const navGrowth = [
+  { title: "Território", url: "/territorio", icon: Map },
+  { title: "Editorial", url: "/editorial", icon: Megaphone },
+  { title: "Pesquisas", url: "/pesquisas", icon: BarChart2 },
+  { title: "Adversários", url: "/adversarios", icon: Swords },
+  { title: "Documentos", url: "/documentos", icon: FileText },
+  { title: "Relatórios", url: "/relatorios", icon: BarChart2 },
+];
+
+const navBottom = [
   { title: "Configurações", url: "/configuracoes", icon: Settings },
 ];
 
 export function AppSidebar() {
   const { state, setOpen } = useSidebar();
   const location = useLocation();
-  const currentPath = location.pathname;
-  
   const collapsed = state === "collapsed";
 
   const isActive = (path: string) => {
-    if (path === "/" && currentPath === "/") return true;
-    if (path !== "/" && currentPath.startsWith(path)) return true;
+    if (path === "/dashboard" && (location.pathname === "/" || location.pathname === "/dashboard")) return true;
+    if (path !== "/dashboard" && location.pathname.startsWith(path)) return true;
     return false;
   };
 
-  const getNavClasses = (path: string) => {
-    const active = isActive(path);
-    return cn(
-      "flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200",
-      active 
-        ? "bg-primary text-primary-foreground shadow-md" 
-        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+  const navCls = (path: string) =>
+    cn(
+      "flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-150 text-sm font-medium w-full",
+      isActive(path)
+        ? "bg-blue-600 text-white shadow-sm"
+        : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
     );
-  };
+
+  const NavItem = ({ item }: { item: { title: string; url: string; icon: React.ElementType } }) => (
+    <SidebarMenuItem>
+      <SidebarMenuButton asChild>
+        <NavLink to={item.url} className={navCls(item.url)} title={collapsed ? item.title : undefined}>
+          <item.icon size={18} className="shrink-0" />
+          {!collapsed && <span>{item.title}</span>}
+        </NavLink>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
 
   return (
-    <Sidebar className={cn("border-r bg-white", collapsed ? "w-16" : "w-64")}>
-      <div className="flex items-center justify-between p-4 border-b">
+    <Sidebar className={cn("border-r bg-white flex flex-col", collapsed ? "w-16" : "w-64")} collapsible="icon">
+      {/* Brand */}
+      <div className={cn("flex items-center border-b p-4 h-16", collapsed ? "justify-center" : "justify-between")}>
         {!collapsed && (
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-sm">CRM</span>
+            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shrink-0">
+              <Vote size={16} className="text-white" />
             </div>
-            <span className="font-semibold text-lg">CRM Pro</span>
+            <div>
+              <div className="text-sm font-bold text-slate-900 leading-tight">GPD</div>
+              <div className="text-[10px] text-slate-500 leading-tight">Gestor Político Digital</div>
+            </div>
           </div>
         )}
-        <button
-          onClick={() => setOpen(!collapsed)}
-          className="p-1.5 rounded-lg hover:bg-accent"
-        >
-          {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-        </button>
+        {collapsed && (
+          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+            <Vote size={16} className="text-white" />
+          </div>
+        )}
+        {!collapsed && (
+          <button
+            onClick={() => setOpen(false)}
+            className="p-1 rounded-md hover:bg-slate-100 text-slate-400"
+          >
+            <ChevronLeft size={16} />
+          </button>
+        )}
       </div>
 
-      <SidebarContent className="p-4">
+      {collapsed && (
+        <button
+          onClick={() => setOpen(true)}
+          className="mx-auto mt-2 p-1 rounded-md hover:bg-slate-100 text-slate-400"
+        >
+          <ChevronRight size={16} />
+        </button>
+      )}
+
+      <SidebarContent className="flex-1 overflow-y-auto py-3 px-2">
         <SidebarGroup>
-          <SidebarGroupLabel className={cn("mb-4", collapsed && "sr-only")}>
-            Menu Principal
-          </SidebarGroupLabel>
+          {!collapsed && (
+            <SidebarGroupLabel className="px-1 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+              Principal
+            </SidebarGroupLabel>
+          )}
           <SidebarGroupContent>
-            <SidebarMenu>
-              {navigationItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
-                    <NavLink to={item.url} className={getNavClasses(item.url)}>
-                      <item.icon size={20} className="shrink-0" />
-                      {!collapsed && <span className="font-medium">{item.title}</span>}
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
+            <SidebarMenu className="space-y-0.5">
+              {navMain.map((item) => <NavItem key={item.url} item={item} />)}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup className="mt-4">
+          {!collapsed && (
+            <SidebarGroupLabel className="px-1 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+              Estratégia
+            </SidebarGroupLabel>
+          )}
+          <SidebarGroupContent>
+            <SidebarMenu className="space-y-0.5">
+              {navGrowth.map((item) => <NavItem key={item.url} item={item} />)}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+
+      {/* Bottom */}
+      <div className="border-t p-2">
+        <SidebarMenu>
+          {navBottom.map((item) => <NavItem key={item.url} item={item} />)}
+        </SidebarMenu>
+      </div>
     </Sidebar>
   );
 }
