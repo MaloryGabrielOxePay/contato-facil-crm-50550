@@ -45,14 +45,10 @@ CREATE TRIGGER organizations_updated_at
 -- RLS
 ALTER TABLE public.organizations ENABLE ROW LEVEL SECURITY;
 
+-- Policy inicial (só owner) — policy de membros adicionada abaixo após user_roles existir
 CREATE POLICY "Usuários veem suas organizações"
   ON public.organizations FOR SELECT
-  USING (
-    owner_id = auth.uid() OR
-    id IN (
-      SELECT organization_id FROM public.user_roles WHERE user_id = auth.uid()
-    )
-  );
+  USING (owner_id = auth.uid());
 
 CREATE POLICY "Owner pode criar organização"
   ON public.organizations FOR INSERT
@@ -100,12 +96,10 @@ CREATE TRIGGER campaigns_updated_at
 
 ALTER TABLE public.campaigns ENABLE ROW LEVEL SECURITY;
 
+-- Policies iniciais (só owner) — policies de membros adicionadas abaixo após user_roles existir
 CREATE POLICY "Membros veem campanhas da organização"
   ON public.campaigns FOR SELECT
   USING (
-    organization_id IN (
-      SELECT organization_id FROM public.user_roles WHERE user_id = auth.uid()
-    ) OR
     organization_id IN (
       SELECT id FROM public.organizations WHERE owner_id = auth.uid()
     )
@@ -116,10 +110,6 @@ CREATE POLICY "Admin cria campanhas"
   WITH CHECK (
     organization_id IN (
       SELECT id FROM public.organizations WHERE owner_id = auth.uid()
-    ) OR
-    organization_id IN (
-      SELECT organization_id FROM public.user_roles
-      WHERE user_id = auth.uid() AND role IN ('super_admin', 'admin')
     )
   );
 
@@ -128,10 +118,6 @@ CREATE POLICY "Admin atualiza campanhas"
   USING (
     organization_id IN (
       SELECT id FROM public.organizations WHERE owner_id = auth.uid()
-    ) OR
-    organization_id IN (
-      SELECT organization_id FROM public.user_roles
-      WHERE user_id = auth.uid() AND role IN ('super_admin', 'admin')
     )
   );
 -- =============================================
@@ -211,6 +197,47 @@ CREATE POLICY "Admin atualiza roles"
     organization_id IN (
       SELECT organization_id FROM public.user_roles ur2
       WHERE ur2.user_id = auth.uid() AND ur2.role IN ('super_admin', 'admin')
+    )
+  );
+
+-- =============================================
+-- Políticas completas para organizations e campaigns
+-- (precisam de user_roles já criado)
+-- =============================================
+
+-- Expande acesso de organizations para membros com user_roles
+CREATE POLICY "Membros veem organizações"
+  ON public.organizations FOR SELECT
+  USING (
+    id IN (
+      SELECT organization_id FROM public.user_roles WHERE user_id = auth.uid()
+    )
+  );
+
+-- Expande acesso de campaigns para membros com user_roles
+CREATE POLICY "Membros veem campanhas"
+  ON public.campaigns FOR SELECT
+  USING (
+    organization_id IN (
+      SELECT organization_id FROM public.user_roles WHERE user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Admin membros cria campanhas"
+  ON public.campaigns FOR INSERT
+  WITH CHECK (
+    organization_id IN (
+      SELECT organization_id FROM public.user_roles
+      WHERE user_id = auth.uid() AND role IN ('super_admin', 'admin')
+    )
+  );
+
+CREATE POLICY "Admin membros atualiza campanhas"
+  ON public.campaigns FOR UPDATE
+  USING (
+    organization_id IN (
+      SELECT organization_id FROM public.user_roles
+      WHERE user_id = auth.uid() AND role IN ('super_admin', 'admin')
     )
   );
 
