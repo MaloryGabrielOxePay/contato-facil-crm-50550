@@ -11,6 +11,7 @@ import {
   Loader2,
   ChevronRight,
   ShieldCheck,
+  LogOut,
 } from 'lucide-react';
 
 import { supabase } from '@/integrations/supabase/client';
@@ -644,6 +645,21 @@ export default function Onboarding() {
   const [step, setStep] = useState(1);
   const [orgId, setOrgId] = useState('');
   const [orgName, setOrgName] = useState('');
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+  const { organization } = useOrganization();
+
+  // Se já tiver organização, vai direto pro dashboard
+  useEffect(() => {
+    if (organization) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [organization, navigate]);
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/login', { replace: true });
+  };
 
   const handleOrgNext = (id: string, name: string) => {
     setOrgId(id);
@@ -720,9 +736,18 @@ export default function Onboarding() {
         </Card>
 
         {/* Footer */}
-        <p className="text-center text-xs text-blue-300/70 select-none">
-          &copy; {new Date().getFullYear()} GPD — Todos os direitos reservados
-        </p>
+        <div className="flex flex-col items-center gap-2">
+          <p className="text-center text-xs text-blue-300/70 select-none">
+            {user?.email} &middot; &copy; {new Date().getFullYear()} GPD
+          </p>
+          <button
+            onClick={handleSignOut}
+            className="flex items-center gap-1.5 text-xs text-blue-300 hover:text-white transition-colors"
+          >
+            <LogOut className="h-3 w-3" />
+            Sair da conta
+          </button>
+        </div>
       </div>
     </div>
   );
