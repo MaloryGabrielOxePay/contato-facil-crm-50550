@@ -3,6 +3,9 @@
 -- Migration 001: Organizations (Multi-tenant)
 -- =============================================
 
+-- Permissões base para o schema public
+GRANT USAGE ON SCHEMA public TO anon, authenticated;
+
 -- Tipos customizados
 CREATE TYPE org_plan AS ENUM ('starter', 'pro', 'enterprise');
 
@@ -1418,6 +1421,17 @@ CREATE POLICY "Usuário marca como lida"
   ON public.notifications FOR UPDATE
   USING (user_id = auth.uid());
 -- =============================================
+-- =============================================
+-- Grants finais: permite que usuários autenticados acessem todas as tabelas
+-- (RLS ainda controla quais linhas cada um pode ver)
+GRANT ALL ON ALL TABLES IN SCHEMA public TO authenticated;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO authenticated;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT ALL ON TABLES TO authenticated;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT ALL ON SEQUENCES TO authenticated;
+
 -- =============================================
 -- GPD: Dados de Demonstração
 -- Campanha: Maria Silva - Vereadora João Pessoa/PB 2026
