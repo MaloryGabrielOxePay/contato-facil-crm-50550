@@ -168,9 +168,87 @@ export function FinancialReports() {
   };
 
   const exportReport = () => {
+    if (!reportData) {
+      toast({
+        title: "Sem dados",
+        description: "Aguarde o carregamento do relatório antes de exportar",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const { start, end } = getDateRange();
+    const periodLabel = `${format(start, "dd/MM/yyyy")} a ${format(end, "dd/MM/yyyy")}`;
+
+    const escapeCsv = (value: string | number) => {
+      const str = String(value ?? "");
+      if (/[";\n\r]/.test(str)) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    const formatNumber = (value: number) =>
+      value.toFixed(2).replace(".", ",");
+
+    const lines: string[] = [];
+    lines.push("Relatório Financeiro");
+    lines.push(`Período;${escapeCsv(periodLabel)}`);
+    lines.push("");
+
+    lines.push("Resumo");
+    lines.push("Indicador;Valor");
+    lines.push(`Receitas;${formatNumber(reportData.totalIncome)}`);
+    lines.push(`Despesas;${formatNumber(reportData.totalExpenses)}`);
+    lines.push(`Resultado;${formatNumber(reportData.netIncome)}`);
+    lines.push(`Transações;${reportData.transactionCount}`);
+    lines.push("");
+
+    lines.push("Gastos por Categoria");
+    lines.push("Categoria;Transações;Valor");
+    if (reportData.categoriesBreakdown.length === 0) {
+      lines.push("Nenhuma categoria encontrada no período;;");
+    } else {
+      reportData.categoriesBreakdown.forEach((c) => {
+        lines.push(
+          `${escapeCsv(c.category)};${c.count};${formatNumber(c.amount)}`
+        );
+      });
+    }
+    lines.push("");
+
+    lines.push("Saldo das Contas");
+    lines.push("Conta;Tipo;Saldo");
+    if (reportData.accountsBalance.length === 0) {
+      lines.push("Nenhuma conta encontrada;;");
+    } else {
+      reportData.accountsBalance.forEach((a) => {
+        lines.push(
+          `${escapeCsv(a.account)};${escapeCsv(getAccountTypeLabel(a.type))};${formatNumber(a.balance)}`
+        );
+      });
+      const total = reportData.accountsBalance.reduce(
+        (sum, acc) => sum + acc.balance,
+        0
+      );
+      lines.push(`Total Geral;;${formatNumber(total)}`);
+    }
+
+    const csv = "﻿" + lines.join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const fileName = `relatorio-financeiro_${format(start, "yyyy-MM-dd")}_${format(end, "yyyy-MM-dd")}.csv`;
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
     toast({
-      title: "Funcionalidade em desenvolvimento",
-      description: "A exportação de relatórios será implementada em breve",
+      title: "Relatório exportado",
+      description: `Arquivo ${fileName} gerado com sucesso`,
     });
   };
 
